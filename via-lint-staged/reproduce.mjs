@@ -47,18 +47,19 @@ try {
   // Copy scenario files
   fs.copyFileSync(path.join(here, 'package.json'), path.join(tmp, 'package.json'));
   fs.copyFileSync(path.join(here, 'eslint.config.ts'), path.join(tmp, 'eslint.config.ts'));
+  fs.copyFileSync(path.join(here, 'lint-staged.config.ts'), path.join(tmp, 'lint-staged.config.ts'));
   fs.copyFileSync(path.join(here, 'tsconfig.json'), path.join(tmp, 'tsconfig.json'));
   copyTree(path.join(here, 'src'), path.join(tmp, 'src'));
 
   // Override the lint-staged task command from env so the matrix can vary
-  // it (npm-direct eslint vs `pnpm exec eslint` etc). The shape that
-  // typically deadlocks in the wild is: tinyexec spawns `pnpm exec eslint`
-  // -> pnpm exec spawns eslint -> eslint is the grandchild of tinyexec.
+  // it (npm-direct eslint vs `pnpm exec eslint` etc). The lint-staged config
+  // lives in a standalone lint-staged.config.ts (the shape every known-
+  // hanging repo uses); rewrite that file in the tmp dir.
   const lintStagedCmd = process.env.MRE_LINT_STAGED_CMD ?? 'eslint --cache --fix';
-  const tmpPkgPath = path.join(tmp, 'package.json');
-  const tmpPkg = JSON.parse(fs.readFileSync(tmpPkgPath, 'utf8'));
-  tmpPkg['lint-staged'] = {'*.ts': lintStagedCmd};
-  fs.writeFileSync(tmpPkgPath, JSON.stringify(tmpPkg, null, 2) + '\n');
+  fs.writeFileSync(
+    path.join(tmp, 'lint-staged.config.ts'),
+    `export default {\n  "*.ts": ${JSON.stringify(lintStagedCmd)}\n};\n`
+  );
   console.log(`[mre] lint-staged task command: ${lintStagedCmd}`);
 
   // Link node_modules to avoid a second install. 'junction' works on
