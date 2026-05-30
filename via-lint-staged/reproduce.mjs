@@ -46,7 +46,7 @@ console.log(`[mre] tmp dir: ${tmp}`);
 try {
   // Copy scenario files
   fs.copyFileSync(path.join(here, 'package.json'), path.join(tmp, 'package.json'));
-  fs.copyFileSync(path.join(here, 'eslint.config.js'), path.join(tmp, 'eslint.config.js'));
+  fs.copyFileSync(path.join(here, 'eslint.config.ts'), path.join(tmp, 'eslint.config.ts'));
   fs.copyFileSync(path.join(here, 'tsconfig.json'), path.join(tmp, 'tsconfig.json'));
   copyTree(path.join(here, 'src'), path.join(tmp, 'src'));
 
