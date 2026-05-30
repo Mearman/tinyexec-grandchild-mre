@@ -38,7 +38,7 @@ jobs:
         run: npm run test:${{ matrix.scenario }}
 
   via-lint-staged:
-    name: via-lint-staged · ${{ matrix.os }} · node-${{ matrix.node }} · tinyexec-${{ matrix.tinyexec }}
+    name: via-lint-staged · ${{ matrix.os }} · node-${{ matrix.node }} · tinyexec-${{ matrix.tinyexec }} · task=${{ matrix.task.name }}
     strategy:
       fail-fast: false
       matrix:
@@ -46,6 +46,9 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         node: [22, 24, 26]
         tinyexec: ['1.1.2', '1.2.2', '1.2.3']
+        task:
+          - {name: npm, cmd: 'eslint --cache --fix'}
+          - {name: pnpm, cmd: 'pnpm exec eslint --cache --fix'}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
@@ -53,6 +56,10 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
+      - uses: pnpm/action-setup@v4
+        if: matrix.task.name == 'pnpm'
+        with:
+          version: 10
       - name: Pin tinyexec ${{ matrix.tinyexec }}
         run: node scripts/set-tinyexec-version.mjs
         env:
@@ -66,3 +73,5 @@ jobs:
       - name: Reproduce
         working-directory: via-lint-staged
         run: npm test
+        env:
+          MRE_LINT_STAGED_CMD: ${{ matrix.task.cmd }}

@@ -50,6 +50,17 @@ try {
   fs.copyFileSync(path.join(here, 'tsconfig.json'), path.join(tmp, 'tsconfig.json'));
   copyTree(path.join(here, 'src'), path.join(tmp, 'src'));
 
+  // Override the lint-staged task command from env so the matrix can vary
+  // it (npm-direct eslint vs `pnpm exec eslint` etc). The shape that
+  // typically deadlocks in the wild is: tinyexec spawns `pnpm exec eslint`
+  // -> pnpm exec spawns eslint -> eslint is the grandchild of tinyexec.
+  const lintStagedCmd = process.env.MRE_LINT_STAGED_CMD ?? 'eslint --cache --fix';
+  const tmpPkgPath = path.join(tmp, 'package.json');
+  const tmpPkg = JSON.parse(fs.readFileSync(tmpPkgPath, 'utf8'));
+  tmpPkg['lint-staged'] = {'*.ts': lintStagedCmd};
+  fs.writeFileSync(tmpPkgPath, JSON.stringify(tmpPkg, null, 2) + '\n');
+  console.log(`[mre] lint-staged task command: ${lintStagedCmd}`);
+
   // Link node_modules to avoid a second install. 'junction' works on
   // Windows without admin; the type arg is ignored on Linux/macOS.
   fs.symlinkSync(path.join(here, 'node_modules'), path.join(tmp, 'node_modules'), 'junction');
