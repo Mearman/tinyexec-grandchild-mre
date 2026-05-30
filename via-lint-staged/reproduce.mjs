@@ -50,8 +50,9 @@ try {
   fs.copyFileSync(path.join(here, 'tsconfig.json'), path.join(tmp, 'tsconfig.json'));
   copyTree(path.join(here, 'src'), path.join(tmp, 'src'));
 
-  // Symlink node_modules to avoid a second install
-  fs.symlinkSync(path.join(here, 'node_modules'), path.join(tmp, 'node_modules'), 'dir');
+  // Link node_modules to avoid a second install. 'junction' works on
+  // Windows without admin; the type arg is ignored on Linux/macOS.
+  fs.symlinkSync(path.join(here, 'node_modules'), path.join(tmp, 'node_modules'), 'junction');
 
   // Show the resolved tinyexec version so CI logs make the matrix obvious
   const resolved = JSON.parse(

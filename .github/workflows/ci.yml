@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         node: [20, 22]
         tinyexec: ['1.1.2', '1.2.2', '1.2.3']
         scenario: [deadlock, data-loss]
@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         node: [20, 22]
         tinyexec: ['1.1.2', '1.2.2', '1.2.3']
     runs-on: ${{ matrix.os }}
