@@ -13,14 +13,14 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node: [20, 22]
+        node: [20, 22, 24, 26]
         tinyexec: ['1.1.2', '1.2.2', '1.2.3']
         scenario: [deadlock, data-loss]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
       - name: Pin tinyexec ${{ matrix.tinyexec }}
@@ -42,14 +42,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # lint-staged@17.0.4 requires Node >=22.22.1, so Node 20 is excluded.
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node: [20, 22]
+        node: [22, 24, 26]
         tinyexec: ['1.1.2', '1.2.2', '1.2.3']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
       - name: Pin tinyexec ${{ matrix.tinyexec }}

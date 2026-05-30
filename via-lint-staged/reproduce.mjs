@@ -71,9 +71,16 @@ try {
   fs.appendFileSync(path.join(tmp, 'src', 'example.ts'), '\nexport const farewell = "bye";\n');
   await run('git', ['add', 'src/example.ts'], tmp);
 
-  // Run lint-staged with a wall-clock budget
-  const lintStagedBin = path.join(tmp, 'node_modules', 'lint-staged', 'bin', 'lint-staged.mjs');
-  console.log(`[mre] launching lint-staged (timeout ${TIMEOUT_MS}ms)…`);
+  // Resolve lint-staged's bin entry from its own package.json — the
+  // filename has changed across versions (lint-staged.js vs .mjs).
+  const lintStagedPkg = JSON.parse(
+    fs.readFileSync(path.join(tmp, 'node_modules', 'lint-staged', 'package.json'), 'utf8')
+  );
+  const binField = lintStagedPkg.bin;
+  const binRel = typeof binField === 'string' ? binField : binField['lint-staged'];
+  const lintStagedBin = path.join(tmp, 'node_modules', 'lint-staged', binRel);
+
+  console.log(`[mre] launching lint-staged (timeout ${TIMEOUT_MS}ms): ${binRel}`);
   const started = Date.now();
 
   const child = spawn(process.execPath, [lintStagedBin, '--debug'], {
