@@ -95,10 +95,20 @@ try {
   console.log(`[mre] launching lint-staged (timeout ${TIMEOUT_MS}ms): ${binRel}`);
   const started = Date.now();
 
+  // stdin must be an open pipe (NOT a TTY, NOT closed) to mimic how git
+  // invokes a pre-commit hook. When eslint's projectService / tsserver / a
+  // pnpm or turbo helper spawns a grandchild, the grandchild inherits this
+  // pipe and never sees EOF — it sits reading from stdin and keeps the
+  // piped stdio handles open, deadlocking tinyexec ≤ 1.2.2. Joe's own
+  // root-cause notes in "Git Hooks Deadlock in Submodule Checkouts.md"
+  // identify this as the trigger; the fix in real repos is `<&-` on every
+  // pnpm/node call in the .husky/pre-commit script.
   const child = spawn(process.execPath, [lintStagedBin, '--debug'], {
     cwd: tmp,
-    stdio: 'inherit'
+    stdio: ['pipe', 'inherit', 'inherit']
   });
+  // Intentionally NOT calling `child.stdin.end()` — we want stdin to stay
+  // open as a pipe with no EOF, exactly like git's hook environment.
 
   let timedOut = false;
   const killTimer = setTimeout(() => {
