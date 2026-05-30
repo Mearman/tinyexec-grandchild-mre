@@ -4,9 +4,11 @@
 // wild). Run before `npm install` in each scenario.
 import fs from 'node:fs';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 const version = process.env.MRE_TINYEXEC_VERSION ?? '1.1.2';
-const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, '..');
 
 const targets = [
   {file: path.join(repoRoot, 'via-tinyexec', 'package.json'), key: 'dependencies'},
