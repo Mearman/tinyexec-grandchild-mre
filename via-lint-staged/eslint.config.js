@@ -1,17 +1,19 @@
-// Flat eslint config with typescript-eslint and projectService enabled.
-// projectService spawns the TypeScript language server (tsserver) as a
-// child of eslint. tsserver inherits eslint's piped stdio. When eslint
-// exits, tsserver lives on holding the pipe — that's the grandchild that
-// deadlocks tinyexec.
+// Flat eslint config using typescript-eslint's recommendedTypeChecked
+// rules. These rules need type info, which forces eslint to consult the
+// TypeScript projectService — that's the path that spawns tsserver and
+// keeps it alive past eslint's own exit, which is the grandchild that
+// tinyexec deadlocks on.
 import tseslint from 'typescript-eslint';
 
-export default tseslint.config({
-  files: ['**/*.ts'],
-  languageOptions: {
-    parser: tseslint.parser,
-    parserOptions: {
-      projectService: true,
-      tsconfigRootDir: import.meta.dirname
+export default tseslint.config(
+  ...tseslint.configs.recommendedTypeChecked,
+  {
+    files: ['**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname
+      }
     }
   }
-});
+);
