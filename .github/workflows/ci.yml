@@ -1,0 +1,67 @@
+name: MRE
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  via-tinyexec:
+    name: via-tinyexec ${{ matrix.scenario }} · ${{ matrix.os }} · node-${{ matrix.node }} · tinyexec-${{ matrix.tinyexec }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [20, 22]
+        tinyexec: ['1.1.2', '1.2.2', '1.2.3']
+        scenario: [deadlock, data-loss]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Pin tinyexec ${{ matrix.tinyexec }}
+        run: node scripts/set-tinyexec-version.mjs
+        env:
+          MRE_TINYEXEC_VERSION: ${{ matrix.tinyexec }}
+      - name: Install
+        working-directory: via-tinyexec
+        run: npm install --no-fund --no-audit
+      - name: Resolved tinyexec
+        working-directory: via-tinyexec
+        run: node -p "require('./node_modules/tinyexec/package.json').version"
+      - name: Run ${{ matrix.scenario }}
+        working-directory: via-tinyexec
+        run: npm run test:${{ matrix.scenario }}
+
+  via-lint-staged:
+    name: via-lint-staged · ${{ matrix.os }} · node-${{ matrix.node }} · tinyexec-${{ matrix.tinyexec }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [20, 22]
+        tinyexec: ['1.1.2', '1.2.2', '1.2.3']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Pin tinyexec ${{ matrix.tinyexec }}
+        run: node scripts/set-tinyexec-version.mjs
+        env:
+          MRE_TINYEXEC_VERSION: ${{ matrix.tinyexec }}
+      - name: Install
+        working-directory: via-lint-staged
+        run: npm install --no-fund --no-audit
+      - name: Resolved tinyexec
+        working-directory: via-lint-staged
+        run: node -p "require('./node_modules/tinyexec/package.json').version"
+      - name: Reproduce
+        working-directory: via-lint-staged
+        run: npm test

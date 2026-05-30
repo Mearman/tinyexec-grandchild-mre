@@ -1,0 +1,18 @@
+{
+  "name": "via-tinyexec",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Calls tinyexec directly to reproduce the grandchild-pipe deadlock and the 1.2.3 buffer-drain race.",
+  "scripts": {
+    "test": "node tests/run-all.mjs",
+    "test:deadlock": "node tests/deadlock.mjs",
+    "test:data-loss": "node tests/data-loss.mjs"
+  },
+  "dependencies": {
+    "tinyexec": "1.1.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

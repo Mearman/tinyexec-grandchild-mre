@@ -1,0 +1,15 @@
+{
+  "name": "tinyexec-grandchild-mre",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reproduces the tinyexec grandchild-pipe deadlock and 1.2.3 buffer-drain regression, both directly and through lint-staged.",
+  "scripts": {
+    "install:all": "(cd via-tinyexec && npm install --no-fund --no-audit) && (cd via-lint-staged && npm install --no-fund --no-audit)",
+    "test:via-tinyexec": "cd via-tinyexec && npm test",
+    "test:via-lint-staged": "cd via-lint-staged && npm test",
+    "test": "npm run test:via-tinyexec && npm run test:via-lint-staged"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
