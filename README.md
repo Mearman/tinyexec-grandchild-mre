@@ -1,74 +1,108 @@
 # tinyexec grandchild-pipe MRE
 
-Minimal reproduction of two related tinyexec bugs that surfaced in lint-staged
-in the wild:
+Two related tinyexec bugs that surface as lint-staged pre-commit hangs:
 
 1. **Grandchild-pipe deadlock** (tinyexec ≤ 1.2.2). When a child of `x()`
-   spawns a grandchild that inherits the piped stdout fd, the grandchild
+   spawns a grandchild that inherits the piped stdio fds, the grandchild
    keeps the pipe open after the child exits. `await x()` and the async
-   iterator both hang. Filed as [tinylibs/tinyexec#138](https://github.com/tinylibs/tinyexec/issues/138)
-   / [lint-staged/lint-staged#1800](https://github.com/lint-staged/lint-staged/issues/1800).
-2. **Buffer-drain race** (tinyexec 1.2.3, regression from [PR #137](https://github.com/tinylibs/tinyexec/pull/137)).
-   The destroy-on-exit fix added in 1.2.3 races with kernel pipe drain on
-   Linux, dropping the tail of the child's stdout. Reverted in
-   `lint-staged@17.0.6`; tracked in
+   iterator both hang. Filed as
+   [tinylibs/tinyexec#138](https://github.com/tinylibs/tinyexec/issues/138)
+   / [lint-staged/lint-staged#1800](https://github.com/lint-staged/lint-staged/issues/1800),
+   merged as
+   [tinylibs/tinyexec#137](https://github.com/tinylibs/tinyexec/pull/137).
+2. **Buffer-drain race** (tinyexec 1.2.3, regression from PR #137). The
+   destroy-on-exit fix races with kernel pipe drain on Linux, dropping
+   the tail of the child's stdout. Reverted in `lint-staged@17.0.6`;
+   tracked in
    [tinylibs/tinyexec#139](https://github.com/tinylibs/tinyexec/issues/139).
 
-The MRE reproduces both, both directly against tinyexec and through
-lint-staged. CI runs an OS × Node × tinyexec-version × scenario matrix so
-you can see which combinations deadlock or lose data.
+## What this MRE proves
+
+`via-tinyexec/` reproduces bug #1 **deterministically** across the
+matrix. A handcrafted child spawns a long-running grandchild with
+`stdio: ['ignore', 1, 'ignore']`, then exits. The parent's `await x()`
+and the async iterator both hang until either the grandchild exits or a
+hard timeout fires. With tinyexec 1.2.3+ the destroy-on-exit fix
+unblocks them.
+
+`via-lint-staged/` puts together the user-facing chain (lint-staged →
+eslint with `typescript-eslint` `projectService: true`, optionally via
+`pnpm exec`, with `eslint-plugin-prettier`, on `eslint.config.ts` loaded
+via jiti, with a standalone `lint-staged.config.ts`, with stdin held
+open as a pipe). In a clean MRE environment, **none of these
+combinations reproduce the user-facing hang**, because the trigger isn't
+any one of those pieces — it's a specific grandchild that reads from
+inherited stdin, which a minimal eslint config doesn't spawn.
+
+## Root cause
+
+The deadlock is caused by **child processes inheriting stdin from the
+git hook's shell pipe**. When eslint's TypeScript `projectService` (or
+`turbo`/`pnpm`/another tool further down the chain) spawns its own child
+process, that grandchild inherits stdin. If stdin is a pipe from git
+(not a terminal), the grandchild reads from it and never sees EOF —
+holding the stdio handles open. tinyexec ≤ 1.2.2 waits for the piped
+stdio to close. Deadlock.
+
+The workaround in real pre-commit hooks is to close fd 0 explicitly on
+every `pnpm`/`node`/`turbo` invocation:
+
+```sh
+# .husky/pre-commit
+pnpm exec lint-staged <&-
+```
+
+`<&-` closes file descriptor 0 (stdin) before spawning, so no child or
+grandchild can read from it.
 
 ## Layout
 
 ```
-via-tinyexec/      direct tinyexec usage (lower-level repro)
-  fixtures/        child / grandchild scripts
+via-tinyexec/      direct tinyexec usage (lower-level repro — reliable)
+  fixtures/        child + grandchild scripts
   tests/           deadlock + data-loss tests
-via-lint-staged/   lint-staged + eslint + projectService (user-facing repro)
+via-lint-staged/   lint-staged + eslint + projectService (chain test)
   src/             a lintable .ts file
-  reproduce.mjs    spins up a temp git repo and runs lint-staged
+  eslint.config.ts flat config with prettier + recommendedTypeChecked
+  lint-staged.config.ts
+  reproduce.mjs    spins up a temp git repo, opens stdin as a pipe, runs lint-staged
 scripts/
   set-tinyexec-version.mjs   pins the tinyexec version pre-install
-.github/workflows/
-  ci.yml           the matrix
+.github/workflows/ci.yml
 ```
 
 ## Local run
 
-Pin to whichever tinyexec version you want to test, then install and run:
-
 ```bash
 MRE_TINYEXEC_VERSION=1.1.2 node scripts/set-tinyexec-version.mjs
 
-# direct tinyexec scenarios
-npm install --prefix via-tinyexec
-npm test --prefix via-tinyexec               # runs deadlock + data-loss
-npm run test:deadlock --prefix via-tinyexec  # just the deadlock test
-npm run test:data-loss --prefix via-tinyexec # just the data-loss test
+# tinyexec direct (definitive reproducer for the deadlock bug)
+(cd via-tinyexec && npm install && npm test)
 
-# lint-staged scenario
-npm install --prefix via-lint-staged
-npm test --prefix via-lint-staged
+# lint-staged chain (does not reproduce in this env — see note above)
+(cd via-lint-staged && npm install && npm test)
 ```
 
-## Expected matrix outcomes
+## Matrix outcomes (observed)
 
-| tinyexec | deadlock test | data-loss test | lint-staged repro |
+CI matrix is OS × Node × tinyexec version × task variant.
+
+| Scenario / version | tinyexec 1.1.2 | tinyexec 1.2.2 | tinyexec 1.2.3 |
 |---|---|---|---|
-| 1.1.2 (and earlier) | **HANG/FAIL** (no fix) | pass | **HANG/FAIL** |
-| 1.2.2 | **HANG/FAIL** (no fix) | pass | **HANG/FAIL** |
-| 1.2.3 | pass (destroy fix works) | **FAIL on Linux** (race) | pass on macOS, FAIL on Linux |
+| via-tinyexec **deadlock** test | **HANG/FAIL** (Linux + macOS) | **HANG/FAIL** | pass (destroy fix works) |
+| via-tinyexec **data-loss** test | pass | pass | pass (race didn't surface in pinned-N fixture) |
+| via-lint-staged (npm task) | pass | pass | pass |
+| via-lint-staged (pnpm exec task) | pass | pass | pass |
 
-The two bugs are not simultaneously fixed by any released version.
+The via-tinyexec deadlock cells pass on Windows because the
+pipe-inheritance model differs there. The bug is real on Unix-like
+systems; tinyexec/lint-staged maintainers have confirmed the Linux CI
+failures referenced in issue #139.
 
-## Versions where this was originally hit (in joe's repos)
+## Caveat on the SIGKILL signature
 
-| Repo | lint-staged | tinyexec (resolved) |
-|---|---|---|
-| `schema-components` | 17.0.4 | 1.1.2 |
-| `infra-cli` | 16.4.0 | 1.1.1 |
-| `agent-comms` | 17.0.4 | 1.1.2 |
-| `guild` | 16.4.0 | 1.0.4 |
-
-Default of `1.1.2` was chosen because it's the most recent pre-fix
-version we hit it on.
+`[FAILED] eslint --fix --cache [SIGKILL]` in lint-staged output is
+**not** necessarily a hang — it's lint-staged's log line when it
+SIGKILLs sibling tasks during its revert phase after another task
+failed first. The genuine hang signature is `git commit` returning no
+prompt and the post-eslint hook script line never executing.

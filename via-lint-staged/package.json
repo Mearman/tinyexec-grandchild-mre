@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Reproduces the deadlock through lint-staged + eslint + eslint-plugin-prettier (synckit/worker_threads grandchild) + typescript-eslint projectService.",
+  "description": "Lint-staged chain test: lint-staged + eslint with typescript-eslint projectService + eslint-plugin-prettier, stdin held open as a pipe (mimics git hook env). Does not reproduce the deadlock in this minimal env — see README.",
   "scripts": {
     "test": "node reproduce.mjs"
   },
