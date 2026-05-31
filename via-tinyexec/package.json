@@ -8,7 +8,8 @@
     "test": "node tests/run-all.mjs",
     "test:deadlock": "node tests/deadlock.mjs",
     "test:data-loss": "node tests/data-loss.mjs",
-    "test:data-loss-iterator": "node tests/data-loss-iterator.mjs"
+    "test:data-loss-iterator": "node tests/data-loss-iterator.mjs",
+    "test:data-loss-concurrent": "node tests/data-loss-concurrent.mjs"
   },
   "dependencies": {
     "tinyexec": "1.1.2"
