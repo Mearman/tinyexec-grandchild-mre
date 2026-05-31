@@ -79,3 +79,26 @@ jobs:
         run: npm test
         env:
           MRE_LINT_STAGED_CMD: ${{ matrix.task.cmd }}
+
+  via-husky:
+    name: via-husky · ${{ matrix.os }} · node-${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [20, 22, 24, 26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Configure git identity
+        run: |
+          git config --global user.email "mre@example.com"
+          git config --global user.name "MRE"
+      - name: Run hook-stdin probe
+        working-directory: via-husky
+        run: npm test
+        shell: bash

@@ -1,0 +1,13 @@
+{
+  "name": "via-husky",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Empirical proof that git invokes pre-commit hooks with stdin redirected to /dev/null, and that processes spawned from the hook see the same closed stdin. Refutes the 'stdin pipe inheritance from git hook' hypothesis behind the original lint-staged-hang diagnosis.",
+  "scripts": {
+    "test": "node reproduce.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
