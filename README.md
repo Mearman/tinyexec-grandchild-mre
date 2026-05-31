@@ -1,6 +1,7 @@
 # tinyexec grandchild-pipe MRE
 
-Two related tinyexec bugs that surface as lint-staged pre-commit hangs:
+Two related tinyexec bugs that have been observed in the wild around
+lint-staged pre-commit runs:
 
 1. **Grandchild-pipe deadlock** (tinyexec ≤ 1.2.2). When a child of `x()`
    spawns a grandchild that inherits the piped stdio fds, the grandchild
@@ -18,34 +19,40 @@ Two related tinyexec bugs that surface as lint-staged pre-commit hangs:
 
 ## What this MRE proves
 
-`via-tinyexec/` reproduces bug #1 **deterministically** across the
-matrix. A handcrafted child spawns a long-running grandchild with
-`stdio: ['ignore', 1, 'ignore']`, then exits. The parent's `await x()`
-and the async iterator both hang until either the grandchild exits or a
-hard timeout fires. With tinyexec 1.2.3+ the destroy-on-exit fix
-unblocks them.
+`via-tinyexec/` **reliably reproduces both bugs** at the tinyexec layer:
 
-`via-lint-staged/` puts together the user-facing chain (lint-staged →
+- The **grandchild-pipe deadlock** is reproduced deterministically on
+  Linux and macOS with tinyexec ≤ 1.2.2. A handcrafted child spawns a
+  long-running grandchild with `stdio: ['ignore', 1, 'ignore']`, then
+  exits. The parent's `await x()` and the async iterator both hang until
+  either the grandchild exits or a hard timeout fires. With tinyexec
+  1.2.3+ the destroy-on-exit fix unblocks them.
+- The **buffer-drain race** in tinyexec 1.2.3 is reproduced by the
+  `data-loss-concurrent` test variant (10 in-flight invocations × 20
+  rounds), which loses the tail of stdout on Linux. Sequential `await`
+  and sequential `for await` consumption never expose it; the race needs
+  event-loop pressure from concurrent invocations.
+
+`via-lint-staged/` puts together the user-facing chain (lint-staged +
 eslint with `typescript-eslint` `projectService: true`, optionally via
 `pnpm exec`, with `eslint-plugin-prettier`, on `eslint.config.ts` loaded
 via jiti, with a standalone `lint-staged.config.ts`, with stdin held
-open as a pipe). In a clean MRE environment, **none of these
-combinations reproduce the user-facing hang**, because the trigger isn't
-any one of those pieces — it's a specific grandchild that reads from
-inherited stdin, which a minimal eslint config doesn't spawn.
+open as a pipe). **None of these combinations reproduce the user-facing
+hang in this clean synthetic environment.** Every cell of the
+via-lint-staged matrix passes.
 
-## Root cause
+That gap matters. Earlier drafts of this README asserted that the
+lint-staged hangs reported in the wild **are** the tinyexec grandchild
+deadlock, with stdin pipe inheritance from the git hook as the trigger.
+The MRE does not demonstrate that link. We acknowledged the leap on
+[tinylibs/tinyexec#139](https://github.com/tinylibs/tinyexec/issues/139#issuecomment-4586146036)
+after
+[a maintainer pointed it out](https://github.com/tinylibs/tinyexec/issues/139#issuecomment-4586003503).
 
-The deadlock is caused by **child processes inheriting stdin from the
-git hook's shell pipe**. When eslint's TypeScript `projectService` (or
-`turbo`/`pnpm`/another tool further down the chain) spawns its own child
-process, that grandchild inherits stdin. If stdin is a pipe from git
-(not a terminal), the grandchild reads from it and never sees EOF —
-holding the stdio handles open. tinyexec ≤ 1.2.2 waits for the piped
-stdio to close. Deadlock.
+## Empirical workaround in real repos
 
-The workaround in real pre-commit hooks is to close fd 0 explicitly on
-every `pnpm`/`node`/`turbo` invocation:
+In real-world pre-commit hooks, closing fd 0 before invoking
+`pnpm`/`node`/`turbo` fixes the hang:
 
 ```sh
 # .husky/pre-commit
@@ -53,7 +60,12 @@ pnpm exec lint-staged <&-
 ```
 
 `<&-` closes file descriptor 0 (stdin) before spawning, so no child or
-grandchild can read from it.
+grandchild can read from it. This works empirically. It is consistent
+with a hypothesis that some grandchild in the chain inherits stdin from
+the git hook's pipe and blocks waiting for EOF, which would in turn
+expose the tinyexec deadlock. We have not isolated which subprocess
+that is, and the MRE does not reproduce the chain, so treat this as the
+fix that works rather than as proof of the mechanism.
 
 ## Layout
 
@@ -77,10 +89,10 @@ scripts/
 ```bash
 MRE_TINYEXEC_VERSION=1.1.2 node scripts/set-tinyexec-version.mjs
 
-# tinyexec direct (definitive reproducer for the deadlock bug)
+# tinyexec direct: reproduces deadlock (≤1.2.2) and buffer-drain race (1.2.3)
 (cd via-tinyexec && npm install && npm test)
 
-# lint-staged chain (does not reproduce in this env — see note above)
+# lint-staged chain: does not reproduce the user-facing hang in this env
 (cd via-lint-staged && npm install && npm test)
 ```
 
@@ -110,7 +122,7 @@ the pattern in lint-staged 17.0.5's failing CI (where the broken tests
 used `for await (const line of …)` consumption).
 
 The buffer-drain race needs **event loop pressure from concurrent
-tinyexec invocations** to surface — sequential calls never expose it.
+tinyexec invocations** to surface: sequential calls never expose it.
 That's why the original report only showed up in lint-staged (which runs
 several tasks in parallel) and not in tinyexec's own tests.
 
@@ -120,7 +132,26 @@ pipe-inheritance model differs there.
 ## Caveat on the SIGKILL signature
 
 `[FAILED] eslint --fix --cache [SIGKILL]` in lint-staged output is
-**not** necessarily a hang — it's lint-staged's log line when it
+**not** necessarily a hang: it's lint-staged's log line when it
 SIGKILLs sibling tasks during its revert phase after another task
 failed first. The genuine hang signature is `git commit` returning no
 prompt and the post-eslint hook script line never executing.
+
+## What we don't know
+
+The exact trigger for the user-facing lint-staged hang remains
+unidentified. Specifically:
+
+- Which subprocess in the lint-staged + eslint + projectService chain
+  reads from inherited stdin and blocks, in environments where it does
+  hang.
+- Whether that subprocess is exposed by tinyexec's grandchild-pipe
+  deadlock, the buffer-drain race, both, or a third mechanism.
+- Why a minimal synthetic chain (this MRE) with the same tools, configs,
+  and a pipe on stdin does not reproduce the hang, while real-world
+  monorepos do.
+
+The two tinyexec bugs documented at the top of this README are real and
+reproducible at the tinyexec layer. The link from those bugs to the
+user-facing lint-staged hang is plausible and consistent with the
+working `<&-` mitigation, but it is not what this MRE demonstrates.
