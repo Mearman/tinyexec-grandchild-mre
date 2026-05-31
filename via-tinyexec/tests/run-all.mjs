@@ -10,7 +10,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 const scenarios = [
   ['deadlock', path.join(here, 'deadlock.mjs')],
-  ['data-loss', path.join(here, 'data-loss.mjs')]
+  ['data-loss', path.join(here, 'data-loss.mjs')],
+  ['data-loss-iterator', path.join(here, 'data-loss-iterator.mjs')]
 ];
 
 let failed = 0;
