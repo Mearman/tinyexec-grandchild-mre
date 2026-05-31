@@ -58,9 +58,10 @@ grandchild can read from it.
 ## Layout
 
 ```
-via-tinyexec/      direct tinyexec usage (lower-level repro — reliable)
-  fixtures/        child + grandchild scripts
-  tests/           deadlock + data-loss tests
+via-tinyexec/      direct tinyexec usage (lower-level repro)
+  fixtures/        child + grandchild + write-many scripts
+  tests/           deadlock + data-loss (sequential await, sequential iterator,
+                   concurrent both) tests
 via-lint-staged/   lint-staged + eslint + projectService (chain test)
   src/             a lintable .ts file
   eslint.config.ts flat config with prettier + recommendedTypeChecked
@@ -85,19 +86,36 @@ MRE_TINYEXEC_VERSION=1.1.2 node scripts/set-tinyexec-version.mjs
 
 ## Matrix outcomes (observed)
 
-CI matrix is OS × Node × tinyexec version × task variant.
+CI matrix is OS × Node × tinyexec version × scenario.
 
 | Scenario / version | tinyexec 1.1.2 | tinyexec 1.2.2 | tinyexec 1.2.3 |
 |---|---|---|---|
-| via-tinyexec **deadlock** test | **HANG/FAIL** (Linux + macOS) | **HANG/FAIL** | pass (destroy fix works) |
-| via-tinyexec **data-loss** test | pass | pass | pass (race didn't surface in pinned-N fixture) |
-| via-lint-staged (npm task) | pass | pass | pass |
-| via-lint-staged (pnpm exec task) | pass | pass | pass |
+| via-tinyexec **deadlock** | **HANG/FAIL** (Linux + macOS) | **HANG/FAIL** | pass (destroy fix works) |
+| via-tinyexec **data-loss** (sequential `await`) | pass | pass | pass (race doesn't surface without concurrency) |
+| via-tinyexec **data-loss-iterator** (sequential `for await`) | pass | pass | pass (same reason) |
+| via-tinyexec **data-loss-concurrent** (10 in-flight × 20 rounds) | pass | pass | **FAIL on Linux** (race triggers) |
+| via-lint-staged (npm / pnpm task) | pass | pass | pass |
+
+Sample numbers for the buffer-drain race, Ubuntu Node 22 + tinyexec 1.2.3:
+
+```
+mode=await    concurrency=10 rounds=20 total=200 lines/run=5000 losses=16 worst-loss=1756
+mode=iterator concurrency=10 rounds=20 total=200 lines/run=5000 losses=51 worst-loss=1756
+distribution: min=3244 max=5000
+```
+
+Loss size is exactly one kernel pipe buffer (1756 lines × 36 bytes ≈ 63 KiB).
+The async-iterator path drops data ~3× more often than `await`, matching
+the pattern in lint-staged 17.0.5's failing CI (where the broken tests
+used `for await (const line of …)` consumption).
+
+The buffer-drain race needs **event loop pressure from concurrent
+tinyexec invocations** to surface — sequential calls never expose it.
+That's why the original report only showed up in lint-staged (which runs
+several tasks in parallel) and not in tinyexec's own tests.
 
 The via-tinyexec deadlock cells pass on Windows because the
-pipe-inheritance model differs there. The bug is real on Unix-like
-systems; tinyexec/lint-staged maintainers have confirmed the Linux CI
-failures referenced in issue #139.
+pipe-inheritance model differs there.
 
 ## Caveat on the SIGKILL signature
 
