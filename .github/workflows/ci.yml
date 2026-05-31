@@ -42,14 +42,17 @@ jobs:
         run: npm run test:${{ matrix.scenario }}
 
   via-lint-staged:
-    name: via-lint-staged · ${{ matrix.os }} · node-${{ matrix.node }} · tinyexec-${{ matrix.tinyexec }} · task=${{ matrix.task.name }}
+    name: via-lint-staged · ${{ matrix.os }} · node-${{ matrix.node }} · tinyexec-${{ matrix.tinyexec }} · ls-${{ matrix.lint_staged }} · task=${{ matrix.task.name }}
     strategy:
       fail-fast: false
       matrix:
-        # lint-staged@17.0.4 requires Node >=22.22.1, so Node 20 is excluded.
+        # lint-staged@17.0.4 requires Node >=22.22.1; 16.4.0 supports older Node.
+        # The session log shows the wild-repo hang on lint-staged 16.4.0 + Node 26,
+        # so test both versions to surface the differential.
         os: [ubuntu-latest, macos-latest, windows-latest]
         node: [22, 24, 26]
         tinyexec: ['1.1.2', '1.2.2', '1.2.3']
+        lint_staged: ['16.4.0', '17.0.4']
         task:
           - {name: npm, cmd: 'eslint --cache --fix'}
           - {name: pnpm, cmd: 'pnpm exec eslint --cache --fix'}
@@ -68,12 +71,20 @@ jobs:
         run: node scripts/set-tinyexec-version.mjs
         env:
           MRE_TINYEXEC_VERSION: ${{ matrix.tinyexec }}
+      - name: Pin lint-staged ${{ matrix.lint_staged }}
+        working-directory: via-lint-staged
+        run: |
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.dependencies['lint-staged']=process.env.LS_VER;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+        env:
+          LS_VER: ${{ matrix.lint_staged }}
       - name: Install
         working-directory: via-lint-staged
         run: npm install --no-fund --no-audit
-      - name: Resolved tinyexec
+      - name: Resolved versions
         working-directory: via-lint-staged
-        run: node -p "require('./node_modules/tinyexec/package.json').version"
+        run: |
+          node -p "'tinyexec ' + require('./node_modules/tinyexec/package.json').version"
+          node -p "'lint-staged ' + require('./node_modules/lint-staged/package.json').version"
       - name: Reproduce
         working-directory: via-lint-staged
         run: npm test
