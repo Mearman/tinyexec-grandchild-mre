@@ -1,5 +1,7 @@
 # tinyexec grandchild-pipe MRE
 
+[![GitHub](https://img.shields.io/badge/GitHub-181717?logo=github&logoColor=white)](https://github.com/Mearman/tinyexec-grandchild-mre) [![CI](https://img.shields.io/github/actions/workflow/status/Mearman/tinyexec-grandchild-mre/ci.yml?branch=main)](https://github.com/Mearman/tinyexec-grandchild-mre/actions)
+
 Two related tinyexec bugs that have been observed in the wild around
 lint-staged pre-commit runs:
 
